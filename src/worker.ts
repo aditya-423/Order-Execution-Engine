@@ -1,6 +1,7 @@
 import { Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 import { MockDexRouter } from './dex.service.js';
+import { pool } from './db.js';
 
 const connection = new Redis({ maxRetriesPerRequest: null });
 const publisher = new Redis(); // A separate connection for publishing updates
@@ -39,12 +40,28 @@ const worker = new Worker('order-processing', async (job) => {
     const txHash = `mock_tx_${Math.random().toString(36).substring(2, 15)}`;
     publisher.publish(channel, JSON.stringify({ status: 'confirmed', txHash, finalPrice: bestQuote.price }));
     console.log(`[Worker] Order ${orderId} confirmed.`);
+
+    // --- SAVE SUCCESSFUL RESULT TO POSTGRESQL ---
+    await pool.query(
+      'INSERT INTO orders (id, status, final_price, transaction_hash) VALUES ($1, $2, $3, $4)',
+      [orderId, 'confirmed', bestQuote.price, txHash]
+    );
+    console.log(`[DB] Saved confirmed order ${orderId} to PostgreSQL.`);
+
     return { orderId, bestQuote };
 
   } catch (error) {
     // ... your catch block remains the same
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
     publisher.publish(channel, JSON.stringify({ status: 'failed', error: errorMessage }));
+
+    // --- SAVE FAILED RESULT TO POSTGRESQL ---
+    await pool.query(
+      'INSERT INTO orders (id, status, error_message) VALUES ($1, $2, $3)',
+      [job.data.orderId, 'failed', errorMessage]
+    );
+    console.log(`[DB] Saved failed order ${job.data.orderId} to PostgreSQL.`);
+
     throw error;
   }
 }, { connection });
