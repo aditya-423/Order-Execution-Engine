@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Execution Engine</title>
+    <style>
+        body { font-family: sans-serif; background: #222; color: #eee; padding: 20px; }
+        #orders-container { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+        .order { border: 1px solid #555; padding: 10px; border-radius: 5px; background: #333; }
+        .order-id { font-family: monospace; font-size: 0.8em; color: #aaa; }
+        .status { font-weight: bold; }
+        .status-confirmed { color: #4CAF50; }
+        .status-failed { color: #F44336; }
+        button { padding: 10px 15px; font-size: 16px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Order Execution Engine</h1>
+    <button id="create-order-btn">Create New Order (SOL/USDC)</button>
+    <div id="orders-container"></div>
+
+    <script>
+        const createOrderBtn = document.getElementById('create-order-btn');
+        const ordersContainer = document.getElementById('orders-container');
+
+        createOrderBtn.addEventListener('click', () => {
+            // Create a new div for this order's status
+            const orderDiv = document.createElement('div');
+            orderDiv.className = 'order';
+            ordersContainer.prepend(orderDiv);
+            
+            // Initiate the WebSocket connection. The backend will create the order.
+            const ws = new WebSocket('ws://localhost:3001/api/orders/execute');
+
+            ws.onopen = () => {
+                console.log('WebSocket connection opened.');
+                orderDiv.innerHTML = `<div>Connecting...</div>`;
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                // Build the display string
+                let statusHTML = `Status: <span class="status status-${data.status}">${data.status}</span>`;
+                let idHTML = `<div class="order-id">Order ID will appear on confirmation.</div>`;
+
+                if (data.status === 'confirmed' || data.status === 'failed') {
+                   idHTML = `<div class="order-id">Tx: ${data.txHash || data.error}</div>`;
+                }
+                
+                orderDiv.innerHTML = statusHTML + idHTML;
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket connection closed.');
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket Error:', error);
+                orderDiv.innerHTML = `<span class="status status-failed">Connection Error</span>`;
+            };
+        });
+    </script>
+</body>
+</html>
