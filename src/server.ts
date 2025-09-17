@@ -11,46 +11,28 @@ const fastify = Fastify({ logger: true });
 // Register the websocket plugin at the top level
 fastify.register(websocketPlugin);
 
-// Define the shape of our URL parameters
-interface OrderParams {
-  orderId: string;
-}
-
 // Encapsulate all our application routes inside a plugin
 fastify.register(async function (fastify) {
 
-  // This route creates the order and returns the ID
-  fastify.post('/api/orders/execute', async (request, reply) => {
-    const orderId = randomUUID();
-    const orderDetails = { orderId, tokenIn: 'SOL', tokenOut: 'USDC', amount: 10 };
-    await orderQueue.add(orderId, orderDetails);
-    fastify.log.info(`Added order ${orderId} to the queue.`);
-    return { orderId };
-  });
-
-  // This route handles the WebSocket connection for a specific order
-  fastify.route<{ Params: OrderParams }>({
+  // This single route now handles both creating and monitoring an order via WebSocket
+  fastify.route({
     method: 'GET',
-    url: '/api/orders/status/:orderId',
+    url: '/api/orders/execute',
     
+    // This handler is required by Fastify's types for the route definition
     handler: (request, reply) => {
-    // This handler is required by Fastify's types but is not used for WebSocket connections.
-    // The connection is automatically upgraded to a WebSocket by the plugin.
-  },
+      // The connection is automatically upgraded to a WebSocket.
+    },
 
+    // This handler manages the live WebSocket connection.
     wsHandler: (connection, request) => {
-      // The `request` object from the initial handshake now correctly contains params
-      const { orderId } = request.params;
-
-      if (!orderId) {
-        fastify.log.error('Could not get orderId from request.params.');
-        // All interactions must use connection.socket
-        connection.close();
-        return;
-      }
+      // 1. Create a new order immediately upon WebSocket connection
+      const orderId = randomUUID();
+      const orderDetails = { orderId, tokenIn: 'SOL', tokenOut: 'USDC', amount: 10 };
+      orderQueue.add(orderId, orderDetails);
+      fastify.log.info(`Order ${orderId} created via WebSocket and queued.`);
       
-      fastify.log.info(`WebSocket connection established for order: ${orderId}`);
-
+      // 2. Subscribe to Redis to get updates for the order we just created
       const subscriber = new Redis({ maxRetriesPerRequest: null });
       const channel = `order-updates:${orderId}`;
 
@@ -64,6 +46,7 @@ fastify.register(async function (fastify) {
         fastify.log.info(`Successfully subscribed to Redis channel: ${channel}`);
       });
 
+      // 3. Forward messages from Redis to the connected client
       subscriber.on('message', (channel, message) => {
         if (channel === `order-updates:${orderId}`) {
           connection.send(message);
@@ -78,6 +61,7 @@ fastify.register(async function (fastify) {
         }
       });
 
+      // 4. Clean up when the client disconnects
       connection.on('close', () => {
         fastify.log.info(`Client disconnected for order ${orderId}. Unsubscribing.`);
         subscriber.unsubscribe(channel);

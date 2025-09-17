@@ -9,4 +9,13 @@ const connection = new Redis({
 });
 
 // Create and export the queue so other files can use it
-export const orderQueue = new Queue('order-processing', { connection });
+export const orderQueue = new Queue('order-processing', { 
+  connection,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 1000,
+    }
+  }
+});

@@ -20,7 +20,7 @@ const worker = new Worker('order-processing', async (job) => {
 
     // 1. PENDING status
     publisher.publish(channel, JSON.stringify({ status: 'pending' }));
-    await delay(10000); // Wait 1 second
+    await delay(1000); // Wait 1 second
 
     // 2. ROUTING status
     publisher.publish(channel, JSON.stringify({ status: 'routing' }));
@@ -64,7 +64,9 @@ const worker = new Worker('order-processing', async (job) => {
 
     throw error;
   }
-}, { connection });
+}, { connection,
+  concurrency: 10,
+});
 
 worker.on('completed', (job) => console.log(`[Worker] Completed job ${job.id}`));
 worker.on('failed', (job, err) => {
