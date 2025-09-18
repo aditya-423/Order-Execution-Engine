@@ -5,9 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Order Execution Engine</title>
     <style>
-        body { font-family: sans-serif; background: #222; color: #eee; padding: 20px; }
+        body { font-family: sans-serif; background: #222; color: #eee; padding: 20px; max-width: 800px; margin: auto; }
+        .controls { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; }
+        .controls input { padding: 8px; font-size: 16px; background: #444; color: #eee; border: 1px solid #666; border-radius: 4px; }
         #orders-container { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
         .order { border: 1px solid #555; padding: 10px; border-radius: 5px; background: #333; }
+        .order-pair { font-size: 1.2em; font-weight: bold; margin-bottom: 5px; }
         .order-id { font-family: monospace; font-size: 0.8em; color: #aaa; }
         .status { font-weight: bold; }
         .status-confirmed { color: #4CAF50; }
@@ -17,39 +20,60 @@
 </head>
 <body>
     <h1>Order Execution Engine</h1>
-    <button id="create-order-btn">Create New Order (SOL/USDC)</button>
+    <div class="controls">
+        <input type="number" id="amount-in" value="10" min="1">
+        <input type="text" id="token-in" value="SOL">
+        <span>to</span>
+        <input type="text" id="token-out" value="USDC">
+        <button id="create-order-btn">Create Order</button>
+    </div>
     <div id="orders-container"></div>
 
     <script>
         const createOrderBtn = document.getElementById('create-order-btn');
         const ordersContainer = document.getElementById('orders-container');
+        const tokenInEl = document.getElementById('token-in');
+        const tokenOutEl = document.getElementById('token-out');
+        // Get the new amount input element
+        const amountEl = document.getElementById('amount-in');
 
         createOrderBtn.addEventListener('click', () => {
-            // Create a new div for this order's status
+            const tokenIn = tokenInEl.value.trim().toUpperCase();
+            const tokenOut = tokenOutEl.value.trim().toUpperCase();
+            // Read the value from the amount input
+            const amount = amountEl.value;
+
+            if (!tokenIn || !tokenOut || !amount || parseFloat(amount) <= 0) {
+                alert('Please enter valid tokens and a positive amount.');
+                return;
+            }
+
             const orderDiv = document.createElement('div');
             orderDiv.className = 'order';
             ordersContainer.prepend(orderDiv);
             
-            // Initiate the WebSocket connection. The backend will create the order.
-            const ws = new WebSocket('ws://localhost:3001/api/orders/execute');
+            // Build the URL dynamically with all three values
+            const wsUrl = `ws://localhost:3001/api/orders/execute/${tokenIn}/${tokenOut}/${amount}`;
+            const ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
-                console.log('WebSocket connection opened.');
-                orderDiv.innerHTML = `<div>Connecting...</div>`;
+                orderDiv.innerHTML = `<div class="order-pair">${amount} ${tokenIn} / ${tokenOut}</div><div>Connecting...</div>`;
             };
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 
-                // Build the display string
+                let pairHTML = `<div class="order-pair">${amount} ${tokenIn} / ${tokenOut}</div>`;
                 let statusHTML = `Status: <span class="status status-${data.status}">${data.status}</span>`;
-                let idHTML = `<div class="order-id">Order ID will appear on confirmation.</div>`;
+                let infoHTML = `<div class="order-id">Processing...</div>`;
 
-                if (data.status === 'confirmed' || data.status === 'failed') {
-                   idHTML = `<div class="order-id">Tx: ${data.txHash || data.error}</div>`;
+                if (data.status === 'confirmed') {
+                   infoHTML = `<div class="order-id">Tx: ${data.txHash}</div>`;
+                } else if (data.status === 'failed') {
+                    infoHTML = `<div class="order-id">Error: ${data.error}</div>`;
                 }
                 
-                orderDiv.innerHTML = statusHTML + idHTML;
+                orderDiv.innerHTML = pairHTML + statusHTML + infoHTML;
             };
 
             ws.onclose = () => {
@@ -58,7 +82,7 @@
 
             ws.onerror = (error) => {
                 console.error('WebSocket Error:', error);
-                orderDiv.innerHTML = `<span class="status status-failed">Connection Error</span>`;
+                orderDiv.innerHTML = `<div class="order-pair">${amount} ${tokenIn} / ${tokenOut}</div><span class="status status-failed">Connection Error</span>`;
             };
         });
     </script>
