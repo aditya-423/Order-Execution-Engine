@@ -2,10 +2,6 @@
 
 This project is a backend system designed to simulate a high-performance order execution engine for decentralized exchanges (DEXs). It features a decoupled architecture using a message queue to handle concurrent orders, mock DEX routing to find the best price, real-time status updates via WebSockets, and persistent storage for order history.
 
-## 🎥 Live Demo
-
-*(Link to your 1-2 minute YouTube video demo will go here)*
-
 ## ✨ Core Features
 
 * **Real-time Order Updates**: Clients receive live status updates (`pending`, `routing`, `confirmed`, etc.) for their orders over a persistent WebSocket connection.
